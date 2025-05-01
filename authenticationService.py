@@ -3,7 +3,6 @@
 
 
 from fastapi import FastAPI, HTTPException, Depends
-from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 #pydantic is used for clean input validation, very good
 from passlib.context import CryptContext
@@ -14,7 +13,7 @@ from datetime import datetime, timedelta
 
 app = FastAPI()
 context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-SECRET_KEY = "132456789" #env variable will be used here in production
+SECRET_KEY = "132456789" #.env variable will be used here in production
 
 
 db = {}
@@ -76,7 +75,7 @@ def register(user: User):
         raise HTTPException(status_code=400, detail="Username already exists")
     hashedPassword = context.hash(user.password)
     db[user.username] = hashedPassword
-    return {"message": "User registered"}
+    return {"message": "Registered"}
 
 @app.post("/login")
 def login(user: User):
