@@ -9,6 +9,7 @@ from passlib.context import CryptContext
 import jwt
 from datetime import datetime, timedelta
 from pymongo import MongoClient
+from fastapi import Header
 
 #https://www.geeksforgeeks.org/authentication-and-authorization-with-fastapi/
 
@@ -78,7 +79,8 @@ def register(user: User):
     usersCollection.insert_one({
         "username": user.username,
         "password": hashedPassword,
-        "accountType": user.accountType
+        "accountType": user.accountType,
+        "status": "free" if user.accountType == "driver" else None
     })
     return {"message": "Registered"}
 
@@ -94,3 +96,19 @@ def login(user: LoginRequest):
          #otherwise we send back the token
         token = createToken(data={"username": user.username})
         return {"token": token}
+
+
+@app.get("/userinfo")
+def get_user_info(Authorization: str = Header(...)):
+    token = Authorization.replace("Bearer ", "")
+    try:
+        decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        username = decoded.get("username")
+        user = usersCollection.find_one({"username": username})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"username": username, "accountType": user["accountType"]}
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token is expired")
+    except Exception as e:
+        raise HTTPException(status_code=403, detail="Invalid token")
