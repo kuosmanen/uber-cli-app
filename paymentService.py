@@ -45,7 +45,7 @@ PAYMENTURL = "https://0f636854-f90f-4117-b130-ca61d54f75f6.mock.pstmn.io/pay"
 app = FastAPI()
 client = MongoClient("mongodb://localhost:27017")
 mongoDB = client["uber-cli-database"]
-paymentCollection = mongoDB["paymentInfo"]
+transactionCollection = mongoDB["transactions"]
 usersCollection = mongoDB["users"] #this is to check if a user exists
 
 #passenger_id and driver_id is the MongoDB id for the users. this adds a layer of additional security
@@ -86,7 +86,7 @@ def pay(req: PaymentRequest):
         #saving payment to database
         if response.status_code == 200:
             data = response.json()
-            paymentCollection.insert_one({
+            transactionCollection.insert_one({
                 "passenger_id": req.passenger_id,
                 "driver_id": req.driver_id,
                 "amount": req.amount,

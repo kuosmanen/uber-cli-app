@@ -24,4 +24,5 @@ Database
 
 This distributed system uses MongoDB as its database.
 the database location is "mongodb://localhost:27017"
+The database is called "uber-cli-database"
 The passwords are NOT stored as plain text in the database but are HASHED!
