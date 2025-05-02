@@ -1,7 +1,6 @@
 #help from https://www.geeksforgeeks.org/how-to-create-microservices-with-fastapi/
 
 import requests
-import json
 
 
 
@@ -9,11 +8,12 @@ APIURL = "http://127.0.0.1:8000"
 
 
 
-def register(username, password):
-    response = requests.post(f"{APIURL}/authentication/register", json={"username": username, "password": password})
-
+def register(username, password, accountType):
+    #accountType is either passenger or driver
+    response = requests.post(f"{APIURL}/authentication/register", json={"username": username, "password": password, "accountType": accountType})
+    data = response.json()
+    
     if response.status_code == 200:
-        data = response.json()
         print(data.get("message"))
         return True
     else:
@@ -26,7 +26,6 @@ def login(username, password):
 
     if response.status_code == 200:
         print("Logged in")
-        print("Token:", data["token"])
         return data["token"]
     else:
         print("Login failed:", data.get("detail"))
@@ -54,10 +53,8 @@ def main():
             if not token:
                 continue
 
-            print("Connected to the server!")
-
+            print("Welcome to the service! Choose what you want to do next")
             while True:
-                print("Welcome to the service! Choose what you want to do next")
                 option = input("\n1 Login\n2 Register\n0 Sign out\nChoose an option: ")
 
                 #Tänne sitten ridematching
@@ -68,7 +65,19 @@ def main():
             #We make sure the user typed the password correctly by asking them to type it again
             passwordAttempt2 = input("Re-enter the password: ")
             if password == passwordAttempt2:
-                register(username, password)
+                #next we ask if they want to be a passenger or driver
+                accountType = None
+                while accountType != "1" and accountType != "2":
+                    accountType = input("Type 1 if you want to be a passenger, type 2 if you want to be a driver: ")
+                    if accountType == "1":
+                            accountType = "passenger"
+                    elif accountType == "2":
+                        accountType = "driver"
+                    else:
+                        print("Input was not 1 or 2. Try again...")
+                        continue
+                    register(username, password, accountType)
+                    break
             else:
                 print("Error: Passwords did not match.")
         

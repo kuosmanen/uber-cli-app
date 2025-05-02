@@ -16,7 +16,7 @@ app = FastAPI()
 context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SECRET_KEY = "132456789" #.env variable will be used here in production
 client = MongoClient("mongodb://localhost:27017") #same for this: .env
-mongoDB = client["authentication"]
+mongoDB = client["uber-cli-database"]
 usersCollection = mongoDB["users"]
 
 
@@ -24,6 +24,14 @@ usersCollection = mongoDB["users"]
 class User(BaseModel):
     username: str
     password: str
+    accountType: str
+#accountType can be either passenger or driver
+
+#login doesn't require you to specify your account type
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
 
 class TokenData(BaseModel):
     token: str
@@ -69,12 +77,13 @@ def register(user: User):
     hashedPassword = context.hash(user.password)
     usersCollection.insert_one({
         "username": user.username,
-        "password": hashedPassword
+        "password": hashedPassword,
+        "accountType": user.accountType
     })
     return {"message": "Registered"}
 
 @app.post("/login")
-def login(user: User):
+def login(user: LoginRequest):
     storedUser = usersCollection.find_one({"username": user.username})
 
     #cheching if the username is in the database and
