@@ -6,13 +6,22 @@ Creating the environment to run fastapi and uvicorn in for the microservices
 Then activating the environment
 .\.venv\Scripts\Activate
 
-
+-------------------------------------------------------------------
 Installing other dependencies
-pip install passlib[bcrypt] pyjwt requests
+pip install passlib[bcrypt] pyjwt requests pymongo
 
 
-
+----------------------------------------------------------------
 Running the microservices aka. the servicesRunner.py file
 This command will run all the microservices at once on the machine
 
 uvicorn servicesRunner:subApp --reload
+
+
+
+----------------------------------------------------------------
+Database
+
+This distributed system uses MongoDB as its database.
+the database location is "mongodb://localhost:27017"
+The passwords are NOT stored as plain text in the database but are HASHED!

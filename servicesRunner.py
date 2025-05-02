@@ -7,8 +7,10 @@
 
 from fastapi import FastAPI
 from authenticationService import app as authenticationApp
+from paymentService import app as paymentApp
 
 subApp = FastAPI()
 
 #Including microservices to handle requests to paths, for example "/authentication/login" etc.
 subApp.mount("/authentication", authenticationApp)
+subApp.mount("/pay", paymentApp)

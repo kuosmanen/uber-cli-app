@@ -8,21 +8,23 @@ from pydantic import BaseModel
 from passlib.context import CryptContext
 import jwt
 from datetime import datetime, timedelta
+from pymongo import MongoClient
 
 #https://www.geeksforgeeks.org/authentication-and-authorization-with-fastapi/
 
 app = FastAPI()
 context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SECRET_KEY = "132456789" #.env variable will be used here in production
+client = MongoClient("mongodb://localhost:27017") #same for this: .env
+mongoDB = client["authentication"]
+usersCollection = mongoDB["users"]
 
 
-db = {}
-
+#these are so that fastapi takes the token as JSON request body and not as a query parameter
 class User(BaseModel):
     username: str
     password: str
 
-#these are so that fastapi takes the token as JSON request body and not as a query parameter
 class TokenData(BaseModel):
     token: str
 
@@ -39,15 +41,6 @@ def createToken(data: dict):
     return token
 
 
-
-
-def verifyUser(user: User):
-    storedPassword = db.get(user.username)
-    #if the password doesn't match the stored password, then we return false
-    if not context.verify(user.password, storedPassword):
-        return False
-    else:
-        return True
 
 
 #This can be called by other microservices for them to authenticate different actions
@@ -71,18 +64,24 @@ def verifyToken(data: TokenData):
 
 @app.post("/register")
 def register(user: User):
-    if user.username in db:
+    if usersCollection.find_one({"username": user.username}):
         raise HTTPException(status_code=400, detail="Username already exists")
     hashedPassword = context.hash(user.password)
-    db[user.username] = hashedPassword
+    usersCollection.insert_one({
+        "username": user.username,
+        "password": hashedPassword
+    })
     return {"message": "Registered"}
 
 @app.post("/login")
 def login(user: User):
+    storedUser = usersCollection.find_one({"username": user.username})
+
+    #cheching if the username is in the database and
     #if the password doesn't match the stored password, then we raise exception
-    if not verifyUser(user):
+    if not storedUser or not context.verify(user.password, storedUser["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     else:
-        #otherwise we send back the token
+         #otherwise we send back the token
         token = createToken(data={"username": user.username})
         return {"token": token}
