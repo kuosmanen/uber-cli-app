@@ -1,12 +1,9 @@
 #help from https://www.geeksforgeeks.org/how-to-create-microservices-with-fastapi/
 
 import requests
-
-
+import socket  # Added: For client-server socket communication
 
 APIURL = "http://127.0.0.1:8000"
-
-
 
 def register(username, password, accountType):
     #accountType is either passenger or driver
@@ -32,12 +29,6 @@ def login(username, password):
         return False
 
 
-
-
-# testi
-
-
-
 #Main loop to handle user inputs
 def main():
     print("Welcome to the ride service!\nFirst, login to the server")
@@ -53,11 +44,61 @@ def main():
             if not token:
                 continue
 
-            print("Welcome to the service! Choose what you want to do next")
-            while True:
-                option = input("\n1 Login\n2 Register\n0 Sign out\nChoose an option: ")
+            # Start socket connection and authenticate with token
+            s = socket.socket()
+            s.connect(("127.0.0.1", 123))
+            s.send(f"TOKEN:{token}".encode())
+            response = s.recv(1024).decode()
+            if "fail" in response.lower():
+                print("Socket authentication failed.")
+                s.close()
+                continue
+            print("Socket authentication successful.")
 
-                #Tänne sitten ridematching
+            # Fetch user type to determine client behavior
+            userinfo = requests.get(f"{APIURL}/authentication/userinfo", headers={"Authorization": f"Bearer {token}"})
+            accountType = userinfo.json()["accountType"]
+
+            if accountType == "driver":
+                # Driver declares readiness
+                print("Welcome, driver! Start receving ride requests by entering your location.")
+                city = input("Enter your current city: ")
+                address = input("Enter your current street address: ")
+                s.send(f"DRIVER_READY:{city}:{address}".encode())
+                print("Waiting for ride requests...\n")
+                while True:
+                    msg = s.recv(1024).decode()
+                    if not msg.strip():
+                        print("[Client] Received empty message from server.")
+                        continue
+                    print(">>>", msg)
+                    if "RIDE_REQUEST" in msg:
+                        accept = input("Accept the ride? (yes/no): ").strip().lower()
+                        if accept == "yes":
+                            s.send(b"ACCEPT_RIDE")  #Driver accepts ride
+                        else:
+                            print("Ride request not accepted. Ready to accept rides!")
+                    elif "Passenger location" in msg:
+                        print("You are now driving to the passenger...")
+                        input("Press Enter when the ride is complete.")
+                        s.send(b"RIDE_COMPLETE")  # Notify ride complete
+
+            elif accountType == "passenger":
+                # Passenger requests a ride
+                print("Welcome, passenger! Request a ride by entering your location.")
+                city = input("Enter your city: ")
+                address = input("Enter your current street address: ")
+                s.send(f"REQUEST_RIDE:{city}:{address}".encode())
+                print("Ride request sent. Waiting for response...\n")
+                while True:
+                    msg = s.recv(1024).decode()
+                    if not msg.strip():
+                        print("[Client] Received empty message from server.")
+                        continue
+                    print(">>>", msg)
+                    if "accepted" in msg.lower():
+                        break
+
 
         elif option == "2":
             username = input("Enter a new username: ")
@@ -91,7 +132,6 @@ def main():
             print("Invalid option. Please try again.")
             continue
 
-
-
-
 main()
+
+
