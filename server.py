@@ -5,8 +5,10 @@
 import socket
 import threading
 import requests
-import json
-from pymongo import MongoClient  # Added: Used for MongoDB user data handling
+from pymongo import MongoClient
+
+AUTHENTICATIONURL = "http://127.0.0.1:8000/authentication/authenticate"
+USERINFOURL = "http://127.0.0.1:8000/authentication/userinfo"
 
 #List of all clients connected
 #the socket is used because every thread gets its own socket
@@ -26,39 +28,34 @@ assigned_rides = {}
 cities = {}
 
 def client_thread(c, addr):
-    clients[c] = {"username": "", "type": "", "city": "", "address": ""}  # Updated: Storing user info for each client
+    clients[c] = {"username": "", "type": "", "city": "", "address": ""}
     
-    mongo = MongoClient("mongodb://localhost:27017")  # Added: Connection to MongoDB
+    mongo = MongoClient("mongodb://localhost:27017")
     db = mongo["uber-cli-database"]
     users = db["users"]
 
-    token_msg = c.recv(1024).decode().strip()
-    if not token_msg.startswith("TOKEN:"):
+    tokenMessage = c.recv(1024).decode().strip()
+    if not tokenMessage.startswith("TOKEN:"):
         c.send(b"Authentication failed: token missing")
         c.close()
         return
 
-    token = token_msg.split(":", 1)[1]
+    token = tokenMessage.split(":", 1)[1]
 
     try:
-        # Token authentication using external API
-        res = requests.post("http://127.0.0.1:8000/authentication/authenticate", json={"token": token})
+        #Token authentication using authentication microservice API
+        res = requests.post(AUTHENTICATIONURL, json={"token": token})
         if res.status_code != 200:
-            c.send(b"Authentication failed: invalid token")
+            errorMesage = res.json().get("detail")
+            c.send(errorMesage.encode())
             c.close()
             return
 
-        decoded = requests.get("http://127.0.0.1:8000/authentication/userinfo", headers={"Authorization": f"Bearer {token}"}).json()
+        decoded = requests.get(USERINFOURL, headers={"Authorization": f"Bearer {token}"}).json()
         username = decoded["username"]
         accountType = decoded["accountType"]
     except:
         c.send(b"Authentication error")
-        c.close()
-        return
-
-    user_doc = users.find_one({"username": username})
-    if not user_doc:
-        c.send(b"Authentication failed: user not found")
         c.close()
         return
 
@@ -74,18 +71,26 @@ def client_thread(c, addr):
 
             message = data.decode().strip()
 
+            #driver setting their location indicating that they're ready to drive
             if message.startswith("DRIVER_READY:"):
                 if clients[c]["type"] != "driver":
-                    c.send(b"You are not a driver.")
+                    c.send(b"You're not a driver.")
                     continue
+
+                #getting the city and address from the driver's request
                 _, city, address = message.split(":", 2)
                 clients[c]["city"] = city
                 clients[c]["address"] = address
+                #Initializing a list to store drivers' sockets for that city if there isn't one
                 if city not in cities:
                     cities[city] = []
+                #adding the driver to the list of drivers in the city
                 if c not in cities[city]:
                     cities[city].append(c)
+
+                #responding to confirm success
                 c.send(b"Ready to accept rides!")
+                #filtering out this user in the database and then adding the correct status for them
                 users.update_one(
                     {"username": clients[c]["username"]},
                     {"$set": {"status": "available"}}
@@ -93,12 +98,15 @@ def client_thread(c, addr):
 
             elif message.startswith("REQUEST_RIDE:"):
                 if clients[c]["type"] != "passenger":
-                    c.send(b"You are not a passenger.")
+                    c.send(b"Drivers cannot request rides.")
                     continue
+
+                #getting the city and address from the passenger's request
                 _, city, address = message.split(":", 2)
                 clients[c]["city"] = city
                 clients[c]["address"] = address
 
+                #getting the list of available drivers in passenger's city
                 eligible_drivers = cities.get(city, [])
                 #if there is no available drivers
                 if not eligible_drivers:
@@ -113,9 +121,11 @@ def client_thread(c, addr):
                     
                 # Timeout to wait for driver response
                 def timeout():
+                    #if passenger hasn't gotten a ride when timeout happens, the pending ride is deleted
                     if c not in assigned_rides:
                         c.send(b"No driver accepted your ride request in time.")
                     del pending_rides[c]
+                
                 timer = threading.Timer(30.0, timeout)
                 timer.start()
                 pending_rides[c] = {
@@ -126,6 +136,8 @@ def client_thread(c, addr):
                 }
 
                 c.send(b"Ride request sent. Waiting for driver...")
+                #this code part ends here but the timeout function is still going
+                #after 30sec it runs the timeout() function
 
             elif message.startswith("ACCEPT_RIDE"):
                 if clients[c]["type"] != "driver":
@@ -133,8 +145,10 @@ def client_thread(c, addr):
                     continue
 
                 accepted = False
+                #passenger is the passenger's socket and ride is the ride info: city, address, responses, timer
                 for passenger, ride in pending_rides.items():
                     if passenger in assigned_rides:
+                        c.send(b"This ride was already accepted by someone.")
                         continue
                     if ride["city"].lower() == clients[c]["city"].lower():
                         assigned_rides[passenger] = c
@@ -187,7 +201,7 @@ def client_thread(c, addr):
 
         except:
             break
-# emptying socket
+#emptying socket
     if c in clients:
         city = clients[c].get("city", "")
         if city in cities and c in cities[city]:
