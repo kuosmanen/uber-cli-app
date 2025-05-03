@@ -2,14 +2,13 @@
 
 
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Header
 from pydantic import BaseModel
 #pydantic is used for clean input validation, very good
 from passlib.context import CryptContext
 import jwt
 from datetime import datetime, timedelta
 from pymongo import MongoClient
-from fastapi import Header
 
 #https://www.geeksforgeeks.org/authentication-and-authorization-with-fastapi/
 
@@ -63,7 +62,7 @@ def verifyToken(data: TokenData):
         if not username:
             raise HTTPException(status_code=403, detail="Invalid credentials")
         else:
-            return {"message": "success"}
+            return {"message": "success", "username": username}
         
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token is expired")

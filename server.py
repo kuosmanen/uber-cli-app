@@ -9,12 +9,13 @@ from pymongo import MongoClient
 
 AUTHENTICATIONURL = "http://127.0.0.1:8000/authentication/authenticate"
 USERINFOURL = "http://127.0.0.1:8000/authentication/userinfo"
+PAYMENTURL = "http://127.0.0.1:8000/payment/pay"
 
 #List of all clients connected
 #the socket is used because every thread gets its own socket
 #that's how we identify the client!
-#{client_socket: type}
-#type 0 is driver, type 1 is passenger
+#{client_socket: username, type, city, address}
+
 clients = {}
 
 # Rides waiting to be accepted by drivers
@@ -70,6 +71,7 @@ def client_thread(c, addr):
                 break
 
             message = data.decode().strip()
+            print(message)
 
             #driver setting their location indicating that they're ready to drive
             if message.startswith("DRIVER_READY:"):
@@ -175,13 +177,14 @@ def client_thread(c, addr):
                 if clients[c]["type"] != "driver":
                     c.send(b"Only drivers can complete rides.")
                     continue
-
+                
+                #Getting the passenger socket from assignedrides using the driver's socket
                 passenger = None
                 for p, d in assigned_rides.items():
                     if d == c:
                         passenger = p
                         break
-
+                
                 if not passenger:
                     c.send(b"No active ride to complete.")
                     continue
@@ -189,8 +192,37 @@ def client_thread(c, addr):
                 del assigned_rides[passenger]
 
                 try:
-                    passenger.send(b"Your ride has been completed.")
-                    c.send(b"Ride completed. Waiting for next ride...")
+                    passenger.send(b"Your ride has been completed. Proceeding to pay automatically...")
+                    c.send(b"Ride completed. Waiting for payment...")
+
+                    #Now payment processing for passenger
+                    #We get the driver and passenger info from the database
+                    driverRecord = users.find_one({"username": clients[c]["username"]})
+                    passengerRecord = users.find_one({"username": clients[passenger]["username"]})
+
+                    #then their object IDs to send to payment microservice
+                    if driverRecord and passengerRecord:
+                        driver_id = str(driverRecord["_id"])
+                        passenger_id = str(passengerRecord["_id"])
+                    
+                    paymentData = {
+                        "passenger_id": passenger_id,
+                        "driver_id": driver_id,
+                        "amount": 10,
+                    }
+
+                    try:
+                        response = requests.post(PAYMENTURL, json= paymentData)
+                        if response.status_code == 200:
+                            c.send(b"Payment processed successfully.")
+                            passenger.send(b"Payment successful. Thank you!")
+                        else:
+                            errorMessage = res.json().get("detail")
+                            c.send(f"Payment service failed: {errorMessage}. Please contact support.".encode())
+                            passenger.send(f"Payment failed: {errorMessage}. Please contact support.".encode())
+                    except Exception as e:
+                        c.send(b"Payment service unreachable.")
+                        passenger.send(b"Payment service unreachable.")
                 except:
                     pass
 
@@ -217,6 +249,7 @@ def client_thread(c, addr):
             pass
         del pending_rides[c]
     c.close()
+    print(f"Socket closed for {c}")
 
 def start_server():
     s = socket.socket()		 

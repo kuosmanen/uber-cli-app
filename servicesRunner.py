@@ -13,4 +13,4 @@ subApp = FastAPI()
 
 #Including microservices to handle requests to paths, for example "/authentication/login" etc.
 subApp.mount("/authentication", authenticationApp)
-subApp.mount("/pay", paymentApp)
+subApp.mount("/payment", paymentApp)
