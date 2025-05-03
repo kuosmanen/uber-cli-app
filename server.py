@@ -104,9 +104,10 @@ def client_thread(c, addr):
                     continue
 
                 #getting the city and address from the passenger's request
-                _, city, address = message.split(":", 2)
+                _, city, address, destination = message.split(":", 3)
                 clients[c]["city"] = city
                 clients[c]["address"] = address
+                clients[c]["destination"] = destination
 
                 #getting the list of available drivers in passenger's city
                 eligible_drivers = cities.get(city, [])
@@ -117,7 +118,7 @@ def client_thread(c, addr):
 
                 for d in eligible_drivers:
                     try:
-                        d.send(f"RIDE_REQUEST:{city}:{address}".encode())
+                        d.send(f"Ride request in {city} from {address} to {destination}".encode())
                     except:
                         pass
                     
