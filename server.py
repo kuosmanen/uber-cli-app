@@ -30,7 +30,8 @@ cities = {}
 
 def client_thread(c, addr):
     clients[c] = {"username": "", "type": "", "city": "", "address": ""}
-    
+
+    # MongoDB database for user data
     mongo = MongoClient("mongodb://localhost:27017")
     db = mongo["uber-cli-database"]
     users = db["users"]
@@ -41,199 +42,203 @@ def client_thread(c, addr):
         c.close()
         return
 
-    token = tokenMessage.split(":", 1)[1]
+# Extract the token from the incoming authentication message
+token = tokenMessage.split(":", 1)[1]
 
-    try:
-        #Token authentication using authentication microservice API
-        res = requests.post(AUTHENTICATIONURL, json={"token": token})
-        if res.status_code != 200:
-            errorMesage = res.json().get("detail")
-            c.send(errorMesage.encode())
-            c.close()
-            return
-
-        decoded = requests.get(USERINFOURL, headers={"Authorization": f"Bearer {token}"}).json()
-        username = decoded["username"]
-        accountType = decoded["accountType"]
-    except:
-        c.send(b"Authentication error")
+try:
+    # Authenticate the token using the authentication microservice
+    res = requests.post(AUTHENTICATIONURL, json={"token": token})
+    if res.status_code != 200:
+        errorMesage = res.json().get("detail")
+        c.send(errorMesage.encode())
         c.close()
         return
 
-    clients[c]["username"] = username
-    clients[c]["type"] = accountType
-    c.send(f"Authenticated as {username} ({accountType})".encode())
+    # Retrieve user information using the valid token
+    decoded = requests.get(USERINFOURL, headers={"Authorization": f"Bearer {token}"}).json()
+    username = decoded["username"]
+    accountType = decoded["accountType"]
+except:
+    # Authentication or user info fetch failed
+    c.send(b"Authentication error")
+    c.close()
+    return
 
-    while True:
-        try:
-            data = c.recv(1024)
-            if not data:
-                break
+# Store the authenticated user's info in the clients dictionary
+clients[c]["username"] = username
+clients[c]["type"] = accountType
+c.send(f"Authenticated as {username} ({accountType})".encode())
 
-            message = data.decode().strip()
-            print(message)
+while True:
+    try:
+        data = c.recv(1024)
+        if not data:
+            break
 
-            #driver setting their location indicating that they're ready to drive
-            if message.startswith("DRIVER_READY:"):
-                if clients[c]["type"] != "driver":
-                    c.send(b"You're not a driver.")
-                    continue
+        message = data.decode().strip()
+        print(message)
 
-                #getting the city and address from the driver's request
-                _, city, address = message.split(":", 2)
-                clients[c]["city"] = city
-                clients[c]["address"] = address
-                #Initializing a list to store drivers' sockets for that city if there isn't one
-                if city not in cities:
-                    cities[city] = []
-                #adding the driver to the list of drivers in the city
-                if c not in cities[city]:
-                    cities[city].append(c)
+        # Driver signals they are ready to accept rides
+        if message.startswith("DRIVER_READY:"):
+            if clients[c]["type"] != "driver":
+                c.send(b"You're not a driver.")
+                continue
 
-                #responding to confirm success
-                c.send(b"Ready to accept rides!")
-                #filtering out this user in the database and then adding the correct status for them
-                users.update_one(
-                    {"username": clients[c]["username"]},
-                    {"$set": {"status": "available"}}
-                )
+            # Extract city and address from message
+            _, city, address = message.split(":", 2)
+            clients[c]["city"] = city
+            clients[c]["address"] = address
 
-            elif message.startswith("REQUEST_RIDE:"):
-                if clients[c]["type"] != "passenger":
-                    c.send(b"Drivers cannot request rides.")
-                    continue
+            # Add driver to the city-specific driver pool
+            if city not in cities:
+                cities[city] = []
+            if c not in cities[city]:
+                cities[city].append(c)
 
-                #getting the city and address from the passenger's request
-                _, city, address, destination = message.split(":", 3)
-                clients[c]["city"] = city
-                clients[c]["address"] = address
-                clients[c]["destination"] = destination
+            # Confirm driver is ready and update DB
+            c.send(b"Ready to accept rides!")
+            users.update_one(
+                {"username": clients[c]["username"]},
+                {"$set": {"status": "available"}}
+            )
 
-                #getting the list of available drivers in passenger's city
-                eligible_drivers = cities.get(city, [])
-                #if there is no available drivers
-                if not eligible_drivers:
-                    c.send(b"No drivers available in your city.")
-                    continue
+        # Passenger requests a ride
+        elif message.startswith("REQUEST_RIDE:"):
+            if clients[c]["type"] != "passenger":
+                c.send(b"Drivers cannot request rides.")
+                continue
 
-                for d in eligible_drivers:
-                    try:
-                        d.send(f"Ride request in {city} from {address} to {destination}".encode())
-                    except:
-                        pass
-                    
-                # Timeout to wait for driver response
-                def timeout():
-                    #if passenger hasn't gotten a ride when timeout happens, the pending ride is deleted
-                    if c not in assigned_rides:
-                        c.send(b"No driver accepted your ride request in time.")
-                    del pending_rides[c]
-                
-                timer = threading.Timer(30.0, timeout)
-                timer.start()
-                pending_rides[c] = {
-                    "city": city,
-                    "address": address,
-                    "responses": [],
-                    "timer": timer
-                }
+            # Extract passenger info
+            _, city, address, destination = message.split(":", 3)
+            clients[c]["city"] = city
+            clients[c]["address"] = address
+            clients[c]["destination"] = destination
 
-                c.send(b"Ride request sent. Waiting for driver...")
-                #this code part ends here but the timeout function is still going
-                #after 30sec it runs the timeout() function
+            eligible_drivers = cities.get(city, [])
 
-            elif message.startswith("ACCEPT_RIDE"):
-                if clients[c]["type"] != "driver":
-                    c.send(b"Only drivers can accept rides.")
-                    continue
+            if not eligible_drivers:
+                c.send(b"No drivers available in your city.")
+                continue
 
-                accepted = False
-                #passenger is the passenger's socket and ride is the ride info: city, address, responses, timer
-                for passenger, ride in pending_rides.items():
-                    if passenger in assigned_rides:
-                        c.send(b"This ride was already accepted by someone.")
-                        continue
-                    if ride["city"].lower() == clients[c]["city"].lower():
-                        assigned_rides[passenger] = c
-                        ride["timer"].cancel()
-
-                        users.update_one(
-                            {"username": clients[c]["username"]},
-                            {"$set": {"status": "on_ride"}}
-                        )
-
-                        try:
-                            passenger.send(f"Ride accepted. Driver location: {clients[c]['address']}".encode())
-                            c.send(f"You accepted the ride. Passenger location: {clients[passenger]['address']}".encode())
-                        except:
-                            pass
-
-                        accepted = True
-                        break
-
-                if not accepted:
-                    c.send(b"Ride request not accepted. Ready to accept rides!")
-
-            elif message.startswith("RIDE_COMPLETE"):
-                if clients[c]["type"] != "driver":
-                    c.send(b"Only drivers can complete rides.")
-                    continue
-                
-                #Getting the passenger socket from assignedrides using the driver's socket
-                passenger = None
-                for p, d in assigned_rides.items():
-                    if d == c:
-                        passenger = p
-                        break
-                
-                if not passenger:
-                    c.send(b"No active ride to complete.")
-                    continue
-
-                del assigned_rides[passenger]
-
+            # Notify all available drivers in the city about the request
+            for d in eligible_drivers:
                 try:
-                    passenger.send(b"Your ride has been completed. Proceeding to pay automatically...")
-                    c.send(b"Ride completed. Waiting for payment...")
-
-                    #Now payment processing for passenger
-                    #We get the driver and passenger info from the database
-                    driverRecord = users.find_one({"username": clients[c]["username"]})
-                    passengerRecord = users.find_one({"username": clients[passenger]["username"]})
-
-                    #then their object IDs to send to payment microservice
-                    if driverRecord and passengerRecord:
-                        driver_id = str(driverRecord["_id"])
-                        passenger_id = str(passengerRecord["_id"])
-                    
-                    paymentData = {
-                        "passenger_id": passenger_id,
-                        "driver_id": driver_id,
-                        "amount": 10,
-                    }
-
-                    try:
-                        response = requests.post(PAYMENTURL, json= paymentData)
-                        if response.status_code == 200:
-                            c.send(b"Payment processed successfully.")
-                            passenger.send(b"Payment successful. Thank you!")
-                        else:
-                            errorMessage = res.json().get("detail")
-                            c.send(f"Payment service failed: {errorMessage}. Please contact support.".encode())
-                            passenger.send(f"Payment failed: {errorMessage}. Please contact support.".encode())
-                    except Exception as e:
-                        c.send(b"Payment service unreachable.")
-                        passenger.send(b"Payment service unreachable.")
+                    d.send(f"Ride request in {city} from {address} to {destination}".encode())
                 except:
                     pass
 
-                users.update_one(
-                    {"username": clients[c]["username"]},
-                    {"$set": {"status": "available"}}
-                )
+            # Set a timeout for driver responses
+            def timeout():
+                if c not in assigned_rides:
+                    c.send(b"No driver accepted your ride request in time.")
+                del pending_rides[c]
 
-        except:
-            break
+            timer = threading.Timer(30.0, timeout)
+            timer.start()
+            pending_rides[c] = {
+                "city": city,
+                "address": address,
+                "responses": [],
+                "timer": timer
+            }
+
+            c.send(b"Ride request sent. Waiting for driver...")
+
+        # Driver accepts a ride
+        elif message.startswith("ACCEPT_RIDE"):
+            if clients[c]["type"] != "driver":
+                c.send(b"Only drivers can accept rides.")
+                continue
+
+            accepted = False
+
+            for passenger, ride in pending_rides.items():
+                if passenger in assigned_rides:
+                    c.send(b"This ride was already accepted by someone.")
+                    continue
+                if ride["city"].lower() == clients[c]["city"].lower():
+                    # Assign driver and cancel ride timeout
+                    assigned_rides[passenger] = c
+                    ride["timer"].cancel()
+
+                    users.update_one(
+                        {"username": clients[c]["username"]},
+                        {"$set": {"status": "on_ride"}}
+                    )
+
+                    try:
+                        passenger.send(f"Ride accepted. Driver location: {clients[c]['address']}".encode())
+                        c.send(f"You accepted the ride. Passenger location: {clients[passenger]['address']}".encode())
+                    except:
+                        pass
+
+                    accepted = True
+                    break
+
+            if not accepted:
+                c.send(b"Ride request not accepted. Ready to accept rides!")
+
+        # Driver marks the ride as completed
+        elif message.startswith("RIDE_COMPLETE"):
+            if clients[c]["type"] != "driver":
+                c.send(b"Only drivers can complete rides.")
+                continue
+
+            # Find the associated passenger
+            passenger = None
+            for p, d in assigned_rides.items():
+                if d == c:
+                    passenger = p
+                    break
+
+            if not passenger:
+                c.send(b"No active ride to complete.")
+                continue
+
+            del assigned_rides[passenger]
+
+            try:
+                passenger.send(b"Your ride has been completed. Proceeding to pay automatically...")
+                c.send(b"Ride completed. Waiting for payment...")
+
+                # Get database records for payment processing
+                driverRecord = users.find_one({"username": clients[c]["username"]})
+                passengerRecord = users.find_one({"username": clients[passenger]["username"]})
+
+                if driverRecord and passengerRecord:
+                    driver_id = str(driverRecord["_id"])
+                    passenger_id = str(passengerRecord["_id"])
+
+                # Call payment microservice
+                paymentData = {
+                    "passenger_id": passenger_id,
+                    "driver_id": driver_id,
+                    "amount": 10,
+                }
+
+                try:
+                    response = requests.post(PAYMENTURL, json=paymentData)
+                    if response.status_code == 200:
+                        c.send(b"Payment processed successfully.")
+                        passenger.send(b"Payment successful. Thank you!")
+                    else:
+                        errorMessage = res.json().get("detail")
+                        c.send(f"Payment service failed: {errorMessage}. Please contact support.".encode())
+                        passenger.send(f"Payment failed: {errorMessage}. Please contact support.".encode())
+                except Exception as e:
+                    c.send(b"Payment service unreachable.")
+                    passenger.send(b"Payment service unreachable.")
+            except:
+                pass
+
+            # Set driver status back to available
+            users.update_one(
+                {"username": clients[c]["username"]},
+                {"$set": {"status": "available"}}
+            )
+
+    except:
+        break  # Socket error or disconnect
 #emptying socket
     if c in clients:
         city = clients[c].get("city", "")
