@@ -133,10 +133,9 @@ def main():
                 while True:
                     msg = s.recv(1024).decode()
                     if not msg.strip():
-                        print("[Client] Received empty message from server.")
                         continue
                     print(">>>", msg)
-                    if "RIDE_REQUEST" in msg:
+                    if "Ride request" in msg:
                         accept = input("Accept the ride? (yes/no): ").strip().lower()
                         if accept == "yes":
                             s.send(b"ACCEPT_RIDE")  #Driver accepts ride
@@ -153,14 +152,18 @@ def main():
                 print("Welcome, passenger! Request a ride by entering your location.")
                 city = input("Enter your city: ")
                 address = input("Enter your current street address: ")
-                s.send(f"REQUEST_RIDE:{city}:{address}".encode())
+                destination = input("Enter your destination address: ")
+                s.send(f"REQUEST_RIDE:{city}:{address}:{destination}".encode())
                 print("Ride request sent. Waiting 30 seconds for response...\n")
                 while True:
                     msg = s.recv(1024).decode()
                     if not msg.strip():
-                        print("[Client] Received empty message from server.")
                         continue
                     print(">>>", msg)
+                    if "no driver accepted" in msg.lower() or "no drivers available" in msg.lower():
+                        print("Returning to main menu...")
+                        s.close()
+                        break
                     if "payment" in msg.lower():
                         if not msg.strip():
                             print("Unexpected error during payment. Contact support.")
@@ -177,5 +180,8 @@ def main():
             continue
 
 main()
+
+
+
 
 
