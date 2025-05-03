@@ -80,7 +80,7 @@ def register(user: User):
         "username": user.username,
         "password": hashedPassword,
         "accountType": user.accountType,
-        "status": "free" if user.accountType == "driver" else None
+        "status": "idle" if user.accountType == "driver" else None
     })
     return {"message": "Registered"}
 
