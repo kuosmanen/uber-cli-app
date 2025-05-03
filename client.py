@@ -1,7 +1,7 @@
 #help from https://www.geeksforgeeks.org/how-to-create-microservices-with-fastapi/
 
 import requests
-import socket  # Added: For client-server socket communication
+import socket
 
 APIURL = "http://127.0.0.1:8000"
 
@@ -89,14 +89,14 @@ def main():
                 city = input("Enter your city: ")
                 address = input("Enter your current street address: ")
                 s.send(f"REQUEST_RIDE:{city}:{address}".encode())
-                print("Ride request sent. Waiting for response...\n")
+                print("Ride request sent. Waiting 30 seconds for response...\n")
                 while True:
                     msg = s.recv(1024).decode()
                     if not msg.strip():
                         print("[Client] Received empty message from server.")
                         continue
                     print(">>>", msg)
-                    if "accepted" in msg.lower():
+                    if "completed" in msg.lower():
                         break
 
 
