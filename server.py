@@ -253,17 +253,17 @@ def client_thread(c, addr):
     print(f"Socket closed for {c}")
 
 def start_server():
-    s = socket.socket()        
+    s = socket.socket()
     print ("Socket successfully created")
 
-    port = 123                
+    port = 123
 
     #empty string because we want to listen for connections
-    s.bind(("", port))         
+    s.bind(("", port))
     print ("socket binded to %s" %(port)) 
 
     #we put the socket into listening mode
-    s.listen()     
+    s.listen()
     print ("The socket is listening") 
 
     #looping forever for connections
