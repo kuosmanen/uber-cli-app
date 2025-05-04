@@ -253,7 +253,7 @@ def client_thread(c, addr):
     print(f"Socket closed for {c}")
 
 def start_server():
-    s = socket.socket()        
+    s = socket.socket()
     print ("Socket successfully created")
 
     port = 123                
