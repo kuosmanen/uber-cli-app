@@ -124,7 +124,7 @@ def main():
             accountType = userinfo.json()["accountType"]
 
             if accountType == "driver":
-                #Driver starting to listen for requests
+                #driver starting to listen for requests
                 print("Welcome, driver! Start receving ride requests by entering your location.")
                 city = input("Enter your current city: ")
                 address = input("Enter your current street address: ")
@@ -144,26 +144,25 @@ def main():
                     elif "Passenger location" in msg:
                         print("You are now driving to the passenger...")
                         input("Press Enter when the ride is complete.")
-                        s.send(b"RIDE_COMPLETE")  #Completing the ride
+                        s.send(b"RIDE_COMPLETE")  #completing the ride
                         break
 
             elif accountType == "passenger":
                 #Passenger requesting a ride
                 print("Welcome, passenger! Request a ride by entering your location.")
-                # Asking ride information from passenger
+                #asking ride info from passenger
                 city = input("Enter your city: ")
                 address = input("Enter your current street address: ")
                 destination = input("Enter your destination address: ")
-                # sending info to server 
+                #sending info to server
                 s.send(f"REQUEST_RIDE:{city}:{address}:{destination}".encode())
                 print("Ride request sent. Waiting 30 seconds for response...\n")
-                # Checking if ride is accepted
+                #checking if ride is accepted
                 while True:
                     msg = s.recv(1024).decode()
                     if not msg.strip():
                         continue
                     print(">>>", msg)
-                    # If ride is not accepted returning to main menu
                     if "no driver accepted" in msg.lower() or "no drivers available" in msg.lower():
                         print("Returning to main menu...")
                         s.close()
@@ -184,8 +183,3 @@ def main():
             continue
 
 main()
-
-
-
-
-
