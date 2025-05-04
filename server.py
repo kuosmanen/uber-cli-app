@@ -30,8 +30,7 @@ cities = {}
 
 def client_thread(c, addr):
     clients[c] = {"username": "", "type": "", "city": "", "address": ""}
-
-    #MongoDB database and user data collection
+    
     mongo = MongoClient("mongodb://localhost:27017")
     db = mongo["uber-cli-database"]
     users = db["users"]
@@ -42,7 +41,6 @@ def client_thread(c, addr):
         c.close()
         return
 
-    # Extract the token from the incoming authentication message
     token = tokenMessage.split(":", 1)[1]
 
     try:
@@ -54,7 +52,6 @@ def client_thread(c, addr):
             c.close()
             return
 
-        
         decoded = requests.get(USERINFOURL, headers={"Authorization": f"Bearer {token}"}).json()
         username = decoded["username"]
         accountType = decoded["accountType"]
@@ -86,7 +83,6 @@ def client_thread(c, addr):
                 _, city, address = message.split(":", 2)
                 clients[c]["city"] = city
                 clients[c]["address"] = address
-
                 #Initializing a list to store drivers' sockets for that city if there isn't one
                 if city not in cities:
                     cities[city] = []
@@ -102,7 +98,6 @@ def client_thread(c, addr):
                     {"$set": {"status": "available"}}
                 )
 
-            
             elif message.startswith("REQUEST_RIDE:"):
                 if clients[c]["type"] != "passenger":
                     c.send(b"Drivers cannot request rides.")
@@ -121,20 +116,19 @@ def client_thread(c, addr):
                     c.send(b"No drivers available in your city.")
                     continue
 
-                #notifying all available drivers in the city about the request
                 for d in eligible_drivers:
                     try:
                         d.send(f"Ride request in {city} from {address} to {destination}".encode())
                     except:
                         pass
-
+                    
                 # Timeout to wait for driver response
                 def timeout():
                     #if passenger hasn't gotten a ride when timeout happens, the pending ride is deleted
                     if c not in assigned_rides:
                         c.send(b"No driver accepted your ride request in time.")
                     del pending_rides[c]
-
+                
                 timer = threading.Timer(30.0, timeout)
                 timer.start()
                 pending_rides[c] = {
@@ -160,7 +154,6 @@ def client_thread(c, addr):
                         c.send(b"This ride was already accepted by someone.")
                         continue
                     if ride["city"].lower() == clients[c]["city"].lower():
-                        #assign driver and cancel ride timeout
                         assigned_rides[passenger] = c
                         ride["timer"].cancel()
 
@@ -185,14 +178,14 @@ def client_thread(c, addr):
                 if clients[c]["type"] != "driver":
                     c.send(b"Only drivers can complete rides.")
                     continue
-
+                
                 #Getting the passenger socket from assignedrides using the driver's socket
                 passenger = None
                 for p, d in assigned_rides.items():
                     if d == c:
                         passenger = p
                         break
-
+                
                 if not passenger:
                     c.send(b"No active ride to complete.")
                     continue
@@ -212,7 +205,7 @@ def client_thread(c, addr):
                     if driverRecord and passengerRecord:
                         driver_id = str(driverRecord["_id"])
                         passenger_id = str(passengerRecord["_id"])
-
+                    
                     paymentData = {
                         "passenger_id": passenger_id,
                         "driver_id": driver_id,
@@ -220,7 +213,7 @@ def client_thread(c, addr):
                     }
 
                     try:
-                        response = requests.post(PAYMENTURL, json=paymentData)
+                        response = requests.post(PAYMENTURL, json= paymentData)
                         if response.status_code == 200:
                             c.send(b"Payment processed successfully.")
                             passenger.send(b"Payment successful. Thank you!")
@@ -234,44 +227,43 @@ def client_thread(c, addr):
                 except:
                     pass
 
-                #set driver status back to available
                 users.update_one(
                     {"username": clients[c]["username"]},
                     {"$set": {"status": "available"}}
                 )
 
         except:
-            break  
-    #emptying socket
-        if c in clients:
-            city = clients[c].get("city", "")
-            if city in cities and c in cities[city]:
-                cities[city].remove(c)
-            del clients[c]
-        for p, d in list(assigned_rides.items()):
-            if d == c or p == c:
-                del assigned_rides[p]
-        if c in pending_rides:
-            try:
-                pending_rides[c]["timer"].cancel()
-            except:
-                pass
-            del pending_rides[c]
-        c.close()
-        print(f"Socket closed for {c}")
+            break
+#emptying socket
+    if c in clients:
+        city = clients[c].get("city", "")
+        if city in cities and c in cities[city]:
+            cities[city].remove(c)
+        del clients[c]
+    for p, d in list(assigned_rides.items()):
+        if d == c or p == c:
+            del assigned_rides[p]
+    if c in pending_rides:
+        try:
+            pending_rides[c]["timer"].cancel()
+        except:
+            pass
+        del pending_rides[c]
+    c.close()
+    print(f"Socket closed for {c}")
 
 def start_server():
-    s = socket.socket()		 
+    s = socket.socket()        
     print ("Socket successfully created")
 
-    port = 123			
+    port = 123                
 
     #empty string because we want to listen for connections
-    s.bind(("", port))		 
+    s.bind(("", port))         
     print ("socket binded to %s" %(port)) 
 
     #we put the socket into listening mode
-    s.listen()	 
+    s.listen()     
     print ("The socket is listening") 
 
     #looping forever for connections
