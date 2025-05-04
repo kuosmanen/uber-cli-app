@@ -1,15 +1,18 @@
 For running the virtual environment:
 
-Creating the environment to run fastapi and uvicorn in for the microservices
-& "PROJECTDIRECTORYPATH systems\.venv\Scripts\python.exe" -m pip install fastapi uvicorn
+First create the environment:
+python -m venv venv
 
-Then activating the environment
-.\.venv\Scripts\Activate
+Then activate the environment on Windows:
+venv\Scripts\activate
+
+------------------------------------------------------------------
+Installing fastapi and uvicorn in the environment in order to run the microservices
+pip install fastapi uvicorn
 
 -------------------------------------------------------------------
 Installing other dependencies
 pip install passlib[bcrypt] pyjwt requests pymongo
-
 
 ----------------------------------------------------------------
 Running the microservices aka. the servicesRunner.py file
@@ -17,12 +20,29 @@ This command will run all the microservices at once on the machine
 
 uvicorn servicesRunner:subApp --reload
 
-
-
-----------------------------------------------------------------
+---------------------------------------------------------------------
+Running the rideMatching server.py:
+python server.py 
+--------------------------------------------------------------------
+Running the client:
+python client.py
+-------------------------------------------------------------------
+--------------------------------------------------------------------
 Database
 
 This distributed system uses MongoDB as its database.
-the database location is "mongodb://localhost:27017"
+The database location is the default "mongodb://localhost:27017"
 The database is called "uber-cli-database"
+
+There are 3 collections in the database: users, paymentInfos and transactions:
+
+users collection has username, password, accountType and status
+accountType can be either passenger or driver
+status can be None, "available" or "on_ride"
+
+paymentInfos collection has user_id and cardNumber
+user_id is the MongoDB ObjectId for the user (gotten from the users collection)
+This is done to separate sensitive financial data from other data
+cardNumber is used as a stand-in for actual banking information like credit card number, expiration and CVC
+
 The passwords are NOT stored as plain text in the database but are HASHED!
