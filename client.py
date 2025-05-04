@@ -145,6 +145,11 @@ def main():
                         print("You are now driving to the passenger...")
                         input("Press Enter when the ride is complete.")
                         s.send(b"RIDE_COMPLETE")  #completing the ride
+                        #receiving last messages
+                        msg = s.recv(1024).decode() #waiting for payment msg
+                        print(">>>", msg)
+                        msg = s.recv(1024).decode() #success, fail or 404
+                        print(">>>", msg)
                         break
 
             elif accountType == "passenger":
