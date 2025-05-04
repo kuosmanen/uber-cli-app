@@ -156,6 +156,7 @@ def client_thread(c, addr):
                     if ride["city"].lower() == clients[c]["city"].lower():
                         assigned_rides[passenger] = c
                         ride["timer"].cancel()
+                        del pending_rides[passenger]
 
                         users.update_one(
                             {"username": clients[c]["username"]},

@@ -141,6 +141,7 @@ def main():
                             s.send(b"ACCEPT_RIDE")  #Driver accepts ride
                         else:
                             print("Ride request not accepted. Ready to accept rides!")
+                            msg = ""
                     elif "Passenger location" in msg:
                         print("You are now driving to the passenger...")
                         input("Press Enter when the ride is complete.")
